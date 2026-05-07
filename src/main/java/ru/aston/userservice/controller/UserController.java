@@ -1,5 +1,6 @@
 package ru.aston.userservice.controller;
 
+import jakarta.validation.Valid;
 import ru.aston.userservice.dto.UserDTO;
 import ru.aston.userservice.service.UserService;
 import org.springframework.http.HttpStatus;
@@ -33,13 +34,13 @@ public class UserController {
     }
 
     @PostMapping
-    public ResponseEntity<UserDTO> createUser(@RequestBody UserDTO userDTO) {
+    public ResponseEntity<UserDTO> createUser(@Valid @RequestBody UserDTO userDTO) {
         UserDTO createdUser = userService.saveUser(userDTO);
         return new ResponseEntity<>(createdUser, HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<UserDTO> updateUser(@PathVariable Long id, @RequestBody UserDTO userDTO) {
+    public ResponseEntity<UserDTO> updateUser(@PathVariable Long id, @Valid @RequestBody UserDTO userDTO) {
         UserDTO updatedUser = userService.updateUser(id, userDTO);
         if (updatedUser != null) {
             return ResponseEntity.ok(updatedUser);

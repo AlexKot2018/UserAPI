@@ -1,45 +1,51 @@
 package ru.aston.userservice.service;
 
-import org.springframework.transaction.annotation.Transactional;
-import ru.aston.userservice.dto.UserDTO;
-import ru.aston.userservice.model.User;
-import ru.aston.userservice.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import ru.aston.userservice.dto.UserDTO;
+import ru.aston.userservice.exception.EmailAlreadyExistsException;
+import ru.aston.userservice.exception.ResourceNotFoundException;
+import ru.aston.userservice.model.User;
+import ru.aston.userservice.repository.UserRepository;
+
 import java.util.List;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
 
-    public UserServiceImpl(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
-
     @Override
     @Transactional
     public UserDTO saveUser(UserDTO userDTO) {
-        log.info("Попытка сохранения нового пользователя с email: {}", userDTO.getEmail());
+        log.info("Запрос на создание пользователя с email: {}", userDTO.getEmail());
+
+        if (userRepository.existsByEmail(userDTO.getEmail())) {
+            throw new EmailAlreadyExistsException("Пользователь с таким email уже зарегистрирован");
+        }
+
         User user = new User(userDTO.getName(), userDTO.getEmail(), userDTO.getAge());
         User savedUser = userRepository.save(user);
-        log.info("Пользователь сохранен успешно. ID: {}", savedUser.getId());
+
+        log.info("Пользователь создан с ID: {}", savedUser.getId());
         return convertToDTO(savedUser);
     }
 
     @Override
-    @Transactional(readOnly = true)
     public UserDTO getUser(Long id) {
         log.debug("Поиск пользователя по ID: {}", id);
         return userRepository.findById(id)
                              .map(this::convertToDTO)
-                             .orElse(null);
+                             .orElseThrow(() -> new ResourceNotFoundException("Пользователь с ID " + id + " не найден"));
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<UserDTO> getAllUsers() {
         log.info("Запрос списка всех пользователей");
         return userRepository.findAll().stream()
@@ -48,27 +54,34 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional // Важно: если поиск успешен, save выполнится в той же транзакции
+    @Transactional
     public UserDTO updateUser(Long id, UserDTO userDTO) {
-        log.info("Обновление данных пользователя с ID: {}", id);
-        return userRepository.findById(id).map(user -> {
-            user.setName(userDTO.getName());
-            user.setEmail(userDTO.getEmail());
-            user.setAge(userDTO.getAge());
-            User updated = userRepository.save(user);
-            log.info("Данные пользователя с ID {} успешно обновлены", id);
-            return convertToDTO(updated);
-        }).orElse(null);
+        log.info("Запрос на обновление пользователя с ID: {}", id);
+
+        User user = userRepository.findById(id)
+                                  .orElseThrow(() -> new ResourceNotFoundException("Невозможно обновить: пользователь с ID " + id + " не найден"));
+
+        if (!user.getEmail().equals(userDTO.getEmail()) && userRepository.existsByEmail(userDTO.getEmail())) {
+            throw new EmailAlreadyExistsException("Email " + userDTO.getEmail() + " уже занят");
+        }
+
+        user.setName(userDTO.getName());
+        user.setEmail(userDTO.getEmail());
+        user.setAge(userDTO.getAge());
+        User updated = userRepository.save(user);
+        log.info("Данные пользователя с ID {} успешно обновлены", id);
+        return convertToDTO(updated);
     }
 
     @Override
     @Transactional
     public void deleteUser(Long id) {
-        log.info("Удаление пользователя с ID: {}", id);
-        if (userRepository.existsById(id)) {
-            userRepository.deleteById(id);
-            log.info("Пользователь с ID {} удален", id);
+        log.info("Запрос на удаление пользователя с ID: {}", id);
+        if (!userRepository.existsById(id)) {
+            throw new ResourceNotFoundException("Невозможно удалить: пользователь с ID " + id + " не найден");
         }
+        userRepository.deleteById(id);
+        log.info("Пользователь с ID {} удален", id);
     }
 
     private UserDTO convertToDTO(User user) {
